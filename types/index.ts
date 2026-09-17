@@ -7,7 +7,12 @@ export const CATEGORIAS: { value: Categoria; label: string }[] = [
   { value: "blindado", label: "Blindado" },
 ];
 
-export type StatusConcessionaria = "CREDENCIADA" | "PRÉ CREDENCIADA" | "SUSPENSA";
+export interface StatusTipo {
+  id: string;
+  nome: string;
+  cor: string;
+  ordem: number;
+}
 
 export interface Contato {
   id?: string;
@@ -20,7 +25,7 @@ export interface Concessionaria {
   id: string;
   nome_loja: string;
   proprietario: string;
-  status: StatusConcessionaria | string;
+  status: string;
   categorias: Categoria[];
   endereco: string;
   bairro: string;

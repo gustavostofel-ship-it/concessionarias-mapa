@@ -62,3 +62,53 @@ export const fetchAddress = async (query: string) => {
     return [];
   }
 };
+
+export interface CepData {
+  logradouro: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+}
+
+/** Busca dados de endereço a partir de um CEP brasileiro (ViaCEP). Retorna null se o CEP for inválido/inexistente. */
+export const fetchCepData = async (cep: string): Promise<CepData | null> => {
+  const cleanCep = cep.replace(/\D/g, '');
+  if (cleanCep.length !== 8) return null;
+  try {
+    const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data || data.erro) return null;
+    return {
+      logradouro: data.logradouro || '',
+      bairro: data.bairro || '',
+      cidade: data.localidade || '',
+      estado: data.uf || '',
+    };
+  } catch (error) {
+    console.error("Erro ao buscar CEP:", error);
+    return null;
+  }
+};
+
+/** Geocodifica um endereço completo (rua, bairro, cidade, estado) para lat/lng via Mapbox. Retorna null se não encontrar. */
+export const geocodeFullAddress = async (parts: { endereco: string; bairro?: string; cidade: string; estado?: string }): Promise<{ lat: number; lng: number } | null> => {
+  if (!MAPBOX_TOKEN) {
+    console.error("NEXT_PUBLIC_MAPBOX_TOKEN não configurado.");
+    return null;
+  }
+  const query = [parts.endereco, parts.bairro, parts.cidade, parts.estado, 'Brasil'].filter(Boolean).join(', ');
+  try {
+    const response = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?country=br&types=address,poi&access_token=${MAPBOX_TOKEN}&limit=1`
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data.features || data.features.length === 0) return null;
+    const [lng, lat] = data.features[0].center;
+    return { lat, lng };
+  } catch (error) {
+    console.error("Erro ao geocodificar endereço completo:", error);
+    return null;
+  }
+};

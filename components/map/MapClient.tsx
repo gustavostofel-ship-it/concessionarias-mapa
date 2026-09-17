@@ -1,6 +1,6 @@
 'use client';
 
-import { Concessionaria, CATEGORIAS } from '@/types';
+import { Concessionaria, CATEGORIAS, StatusTipo } from '@/types';
 import { useEffect, useRef, useMemo, useState } from 'react';
 import Map, { Marker, Popup, Source, Layer, NavigationControl } from 'react-map-gl/mapbox';
 import type { MapRef } from 'react-map-gl/mapbox';
@@ -15,6 +15,7 @@ const MAP_STYLE = process.env.NEXT_PUBLIC_MAPBOX_STYLE || "mapbox://styles/mapbo
 
 interface MapClientProps {
   stores: Concessionaria[];
+  statusTipos: StatusTipo[];
   origin: { lat: number; lng: number; address: string } | null;
   destination: Concessionaria | null;
   searchedLocation: { lat: number; lng: number; address: string } | null;
@@ -28,18 +29,8 @@ interface MapClientProps {
 
 const BRASIL_CENTER = { lat: -15.7801, lng: -47.9292 };
 
-function getStatusLabelStyle(status: string) {
-    const norm = (status || '').toLowerCase();
-    if (norm.includes('pré') || norm.includes('pre')) return 'bg-blue-100 text-blue-800 border-blue-200';
-    if (norm.includes('suspen')) return 'bg-red-100 text-red-800 border-red-200';
-    return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-}
-
-function getPinColor(status: string) {
-  const norm = (status || '').toLowerCase();
-  if (norm.includes('pré') || norm.includes('pre')) return '#3B82F6';
-  if (norm.includes('suspen')) return '#EF4444';
-  return '#10B981';
+function getPinColor(status: string, statusTipos: StatusTipo[]) {
+  return statusTipos.find(t => t.nome === status)?.cor || '#64748B';
 }
 
 function getFirstTwoWords(name: string) {
@@ -51,7 +42,7 @@ function labelForCategoria(value: string) {
   return CATEGORIAS.find(c => c.value === value)?.label || value;
 }
 
-export default function MapClient({ stores, origin, destination, searchedLocation, onSetOriginFromPin, onSetDestination, onSetOriginFromSearch, onSetDestinationFromSearch, onRouteFound, onClearEvent }: MapClientProps) {
+export default function MapClient({ stores, statusTipos, origin, destination, searchedLocation, onSetOriginFromPin, onSetDestination, onSetOriginFromSearch, onSetDestinationFromSearch, onRouteFound, onClearEvent }: MapClientProps) {
   const mapRef = useRef<MapRef>(null);
   const [popupInfo, setPopupInfo] = useState<Concessionaria | null>(null);
   const [routeGeoJSON, setRouteGeoJSON] = useState<any>(null);
@@ -273,7 +264,7 @@ export default function MapClient({ stores, origin, destination, searchedLocatio
                 <div
                   className="w-7 h-7 rounded-full border-[3px] border-white transition-transform group-hover:scale-125"
                   style={{
-                    backgroundColor: getPinColor(store.status),
+                    backgroundColor: getPinColor(store.status, statusTipos),
                     boxShadow: '0 4px 10px rgba(0,0,0,0.3)'
                   }}
                 />
@@ -304,7 +295,14 @@ export default function MapClient({ stores, origin, destination, searchedLocatio
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
               <div className="flex flex-col gap-1 mb-3 pt-2">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border w-fit uppercase tracking-wider ${getStatusLabelStyle(popupInfo.status)}`}>
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full border w-fit uppercase tracking-wider"
+                  style={{
+                    backgroundColor: `${getPinColor(popupInfo.status, statusTipos)}1A`,
+                    color: getPinColor(popupInfo.status, statusTipos),
+                    borderColor: `${getPinColor(popupInfo.status, statusTipos)}55`,
+                  }}
+                >
                   {popupInfo.status}
                 </span>
                 <h3 className="font-bold text-slate-800 leading-tight">{popupInfo.nome_loja}</h3>

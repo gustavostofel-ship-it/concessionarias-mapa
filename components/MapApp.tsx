@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { motion } from 'motion/react';
 import dynamic from 'next/dynamic';
-import { Concessionaria, Categoria, CATEGORIAS } from '@/types';
+import { Concessionaria, Categoria, CATEGORIAS, StatusTipo } from '@/types';
 import { AddressSearch, AddressSearchRef } from './AddressSearch';
 
 const MapClient = dynamic(() => import('./map/MapClient'), {
@@ -20,17 +20,18 @@ const MapClient = dynamic(() => import('./map/MapClient'), {
 
 interface MapAppProps {
   initialConcessionarias: Concessionaria[];
+  statusTipos: StatusTipo[];
 }
 
-type StatusFilter = 'TODAS' | 'CREDENCIADA' | 'PRE' | 'SUSPENSA';
+const TODAS = '__TODAS__';
 
-export default function MapApp({ initialConcessionarias }: MapAppProps) {
+export default function MapApp({ initialConcessionarias, statusTipos }: MapAppProps) {
   const [origin, setOrigin] = useState<{ lat: number; lng: number; address: string } | null>(null);
   const [destination, setDestination] = useState<Concessionaria | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; time: string }>({ distance: '', time: '' });
 
   const [searchedLocation, setSearchedLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('TODAS');
+  const [statusFilter, setStatusFilter] = useState<string>(TODAS);
   const [categoriaFilter, setCategoriaFilter] = useState<Categoria[]>([]);
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
   const searchRefDesktop = useRef<AddressSearchRef>(null);
@@ -54,11 +55,8 @@ export default function MapApp({ initialConcessionarias }: MapAppProps) {
   };
 
   const matchesStatus = (store: Concessionaria) => {
-    if (statusFilter === 'TODAS') return true;
-    const s = (store.status || '').toLowerCase();
-    if (statusFilter === 'PRE') return s.includes('pré') || s.includes('pre');
-    if (statusFilter === 'SUSPENSA') return s.includes('suspen');
-    return !s.includes('pré') && !s.includes('pre') && !s.includes('suspen');
+    if (statusFilter === TODAS) return true;
+    return store.status === statusFilter;
   };
 
   const matchesCategoria = (store: Concessionaria) => {
@@ -171,21 +169,18 @@ export default function MapApp({ initialConcessionarias }: MapAppProps) {
 
       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Status</p>
       <div className="grid grid-cols-2 gap-y-3 gap-x-2 pb-4">
-         <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setStatusFilter(statusFilter === 'CREDENCIADA' ? 'TODAS' : 'CREDENCIADA')}>
-           <div className={`w-3.5 h-3.5 rounded-full bg-emerald-500 flex-shrink-0 transition-all ${statusFilter === 'CREDENCIADA' ? 'ring-4 ring-emerald-100 scale-110' : 'group-hover:scale-110'}`}></div>
-           <span className={`text-[13px] font-bold ${statusFilter === 'CREDENCIADA' ? 'text-slate-900' : 'text-slate-500'}`}>Credenciada</span>
-         </div>
-         <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setStatusFilter(statusFilter === 'PRE' ? 'TODAS' : 'PRE')}>
-           <div className={`w-3.5 h-3.5 rounded-full bg-blue-500 flex-shrink-0 transition-all ${statusFilter === 'PRE' ? 'ring-4 ring-blue-100 scale-110' : 'group-hover:scale-110'}`}></div>
-           <span className={`text-[13px] font-bold ${statusFilter === 'PRE' ? 'text-slate-900' : 'text-slate-500'}`}>Pré Credenc.</span>
-         </div>
-         <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setStatusFilter(statusFilter === 'SUSPENSA' ? 'TODAS' : 'SUSPENSA')}>
-           <div className={`w-3.5 h-3.5 rounded-full bg-red-500 flex-shrink-0 transition-all ${statusFilter === 'SUSPENSA' ? 'ring-4 ring-red-100 scale-110' : 'group-hover:scale-110'}`}></div>
-           <span className={`text-[13px] font-bold ${statusFilter === 'SUSPENSA' ? 'text-slate-900' : 'text-slate-500'}`}>Suspensa</span>
-         </div>
-         <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setStatusFilter('TODAS')}>
-           <div className={`w-3.5 h-3.5 rounded-full bg-slate-800 flex-shrink-0 transition-all ${statusFilter === 'TODAS' ? 'ring-4 ring-slate-200 scale-110' : 'group-hover:scale-110'}`}></div>
-           <span className={`text-[13px] font-bold ${statusFilter === 'TODAS' ? 'text-slate-900' : 'text-slate-500'}`}>Todas</span>
+         {statusTipos.map(tipo => (
+           <div key={tipo.id} className="flex items-center gap-2 cursor-pointer group" onClick={() => setStatusFilter(statusFilter === tipo.nome ? TODAS : tipo.nome)}>
+             <div
+               className={`w-3.5 h-3.5 rounded-full flex-shrink-0 transition-all ${statusFilter === tipo.nome ? 'ring-4 ring-offset-0 scale-110' : 'group-hover:scale-110'}`}
+               style={{ backgroundColor: tipo.cor, boxShadow: statusFilter === tipo.nome ? `0 0 0 4px ${tipo.cor}33` : undefined }}
+             ></div>
+             <span className={`text-[13px] font-bold ${statusFilter === tipo.nome ? 'text-slate-900' : 'text-slate-500'}`}>{tipo.nome}</span>
+           </div>
+         ))}
+         <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setStatusFilter(TODAS)}>
+           <div className={`w-3.5 h-3.5 rounded-full bg-slate-800 flex-shrink-0 transition-all ${statusFilter === TODAS ? 'ring-4 ring-slate-200 scale-110' : 'group-hover:scale-110'}`}></div>
+           <span className={`text-[13px] font-bold ${statusFilter === TODAS ? 'text-slate-900' : 'text-slate-500'}`}>Todas</span>
          </div>
       </div>
 
@@ -284,6 +279,7 @@ export default function MapApp({ initialConcessionarias }: MapAppProps) {
 
       <MapClient
         stores={filteredStores}
+        statusTipos={statusTipos}
         origin={origin}
         destination={destination}
         searchedLocation={searchedLocation}

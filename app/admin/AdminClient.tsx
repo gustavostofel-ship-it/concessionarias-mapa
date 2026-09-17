@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Concessionaria, Contato, Categoria, CATEGORIAS } from "@/types";
-import { Lock, Search, Plus, Edit2, Trash2, ArrowLeft, Loader2, Save, X, Trash } from "lucide-react";
+import { fetchCepData, geocodeFullAddress } from "@/lib/geocoding";
+import { Concessionaria, Contato, Categoria, CATEGORIAS, StatusTipo } from "@/types";
+import { Lock, Search, Plus, Edit2, Trash2, ArrowLeft, Loader2, Save, X, Trash, Settings, MapPin } from "lucide-react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 
@@ -113,12 +114,20 @@ export default function AdminClient() {
 
 function AdminDashboard({ onLogout, userEmail }: { onLogout: () => void; userEmail: string }) {
   const [stores, setStores] = useState<Concessionaria[]>([]);
+  const [statusTipos, setStatusTipos] = useState<StatusTipo[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isStatusManagerOpen, setIsStatusManagerOpen] = useState(false);
   const [editingStore, setEditingStore] = useState<Concessionaria | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+
+  const fetchStatusTipos = async () => {
+    const { data, error } = await supabase.from('status_tipos').select('*').order('ordem', { ascending: true });
+    if (error) console.error(error);
+    if (data) setStatusTipos(data as StatusTipo[]);
+  };
 
   const fetchStores = async () => {
     setLoading(true);
@@ -139,6 +148,7 @@ function AdminDashboard({ onLogout, userEmail }: { onLogout: () => void; userEma
 
   useEffect(() => {
     fetchStores();
+    fetchStatusTipos();
   }, []);
 
   const filteredStores = stores.filter(s =>
@@ -155,6 +165,8 @@ function AdminDashboard({ onLogout, userEmail }: { onLogout: () => void; userEma
     }
     await fetchStores();
   };
+
+  const colorFor = (statusNome: string) => statusTipos.find(t => t.nome === statusNome)?.cor || '#64748B';
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -179,6 +191,13 @@ function AdminDashboard({ onLogout, userEmail }: { onLogout: () => void; userEma
               className="w-full pl-10 pr-4 py-2 bg-slate-100 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 border rounded-lg text-sm transition-all outline-none"
             />
           </div>
+          <button
+            onClick={() => setIsStatusManagerOpen(true)}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 px-3 rounded-lg flex items-center gap-2 transition-colors whitespace-nowrap text-sm h-10"
+            title="Gerenciar Status"
+          >
+            <Settings size={16} /> <span className="hidden sm:inline">Status</span>
+          </button>
           <button
             onClick={() => { setEditingStore(null); setIsFormOpen(true); }}
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors whitespace-nowrap text-sm h-10"
@@ -230,11 +249,10 @@ function AdminDashboard({ onLogout, userEmail }: { onLogout: () => void; userEma
                         {store.nome_loja}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                          store.status === 'CREDENCIADA' ? 'bg-green-100 text-green-700' :
-                          store.status === 'SUSPENSA' ? 'bg-red-100 text-red-700' :
-                          'bg-yellow-100 text-yellow-700'
-                        }`}>
+                        <span
+                          className="px-2.5 py-1 rounded-full text-xs font-bold"
+                          style={{ backgroundColor: `${colorFor(store.status)}1A`, color: colorFor(store.status) }}
+                        >
                           {store.status}
                         </span>
                       </td>
@@ -299,6 +317,7 @@ function AdminDashboard({ onLogout, userEmail }: { onLogout: () => void; userEma
       {isFormOpen && (
         <StoreFormModal
           store={editingStore}
+          statusTipos={statusTipos}
           onClose={() => setIsFormOpen(false)}
           onSave={() => {
             setIsFormOpen(false);
@@ -306,22 +325,137 @@ function AdminDashboard({ onLogout, userEmail }: { onLogout: () => void; userEma
           }}
         />
       )}
+
+      {isStatusManagerOpen && (
+        <StatusManagerModal
+          statusTipos={statusTipos}
+          onClose={() => setIsStatusManagerOpen(false)}
+          onChange={fetchStatusTipos}
+        />
+      )}
+    </div>
+  );
+}
+
+function StatusManagerModal({ statusTipos, onClose, onChange }: { statusTipos: StatusTipo[]; onClose: () => void; onChange: () => void }) {
+  const [novoNome, setNovoNome] = useState("");
+  const [novaCor, setNovaCor] = useState("#3B82F6");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editCor, setEditCor] = useState("");
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novoNome.trim()) return;
+    setSaving(true);
+    setError(null);
+    const { error } = await supabase.from('status_tipos').insert([{
+      nome: novoNome.trim().toUpperCase(),
+      cor: novaCor,
+      ordem: statusTipos.length,
+    }]);
+    setSaving(false);
+    if (error) {
+      setError(error.message.includes('duplicate') ? 'Já existe um status com esse nome.' : error.message);
+      return;
+    }
+    setNovoNome("");
+    onChange();
+  };
+
+  const startEdit = (tipo: StatusTipo) => {
+    setEditingId(tipo.id);
+    setEditNome(tipo.nome);
+    setEditCor(tipo.cor);
+  };
+
+  const saveEdit = async (id: string) => {
+    setError(null);
+    const { error } = await supabase.from('status_tipos').update({ nome: editNome.trim().toUpperCase(), cor: editCor }).eq('id', id);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setEditingId(null);
+    onChange();
+  };
+
+  const handleDelete = async (id: string) => {
+    setError(null);
+    const { error } = await supabase.from('status_tipos').delete().eq('id', id);
+    if (error) {
+      setError('Não é possível excluir: existem concessionárias usando esse status.');
+      return;
+    }
+    onChange();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-black text-slate-800">Gerenciar Status</h2>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-red-500 bg-slate-50 hover:bg-slate-100 rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {error && <div className="mb-3 p-2.5 bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200">{error}</div>}
+
+        <div className="flex flex-col gap-2 mb-5 max-h-60 overflow-y-auto">
+          {statusTipos.map(tipo => (
+            <div key={tipo.id} className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg">
+              {editingId === tipo.id ? (
+                <>
+                  <input type="color" value={editCor} onChange={e => setEditCor(e.target.value)} className="w-8 h-8 rounded cursor-pointer flex-shrink-0" />
+                  <input type="text" value={editNome} onChange={e => setEditNome(e.target.value)} className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm" />
+                  <button onClick={() => saveEdit(tipo.id)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded"><Save size={14} /></button>
+                  <button onClick={() => setEditingId(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded"><X size={14} /></button>
+                </>
+              ) : (
+                <>
+                  <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: tipo.cor }} />
+                  <span className="flex-1 text-sm font-bold text-slate-700">{tipo.nome}</span>
+                  <button onClick={() => startEdit(tipo)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={14} /></button>
+                  <button onClick={() => handleDelete(tipo.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+                </>
+              )}
+            </div>
+          ))}
+          {statusTipos.length === 0 && <p className="text-sm text-slate-400 text-center py-4">Nenhum status cadastrado.</p>}
+        </div>
+
+        <form onSubmit={handleAdd} className="flex items-center gap-2 border-t border-slate-100 pt-4">
+          <input type="color" value={novaCor} onChange={e => setNovaCor(e.target.value)} className="w-9 h-9 rounded cursor-pointer flex-shrink-0" />
+          <input
+            type="text"
+            placeholder="Novo status (ex: EM ANÁLISE)"
+            value={novoNome}
+            onChange={e => setNovoNome(e.target.value)}
+            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+          <button type="submit" disabled={saving} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-60">
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
 
 const emptyForm = {
-  nome_loja: "", proprietario: "", status: "PRÉ CREDENCIADA", categorias: [] as Categoria[],
-  regiao: "", cidade: "", bairro: "", cep: "", endereco: "", estado: "RJ",
-  horario_de_funcionamento: "", informacoes: "", lat: "", lng: ""
+  nome_loja: "", proprietario: "", status: "", categorias: [] as Categoria[],
+  regiao: "", cidade: "", bairro: "", cep: "", endereco: "", estado: "",
+  horario_de_funcionamento: "", informacoes: ""
 };
 
-function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | null, onClose: () => void, onSave: () => void }) {
-  const [formData, setFormData] = useState<any>(store ? {
-    ...store,
-    lat: store.lat ?? "",
-    lng: store.lng ?? "",
-  } : emptyForm);
+function StoreFormModal({ store, statusTipos, onClose, onSave }: { store: Concessionaria | null; statusTipos: StatusTipo[]; onClose: () => void; onSave: () => void }) {
+  const [formData, setFormData] = useState<any>(store ? { ...store } : {
+    ...emptyForm,
+    status: statusTipos[0]?.nome || "",
+  });
 
   const [contatos, setContatos] = useState<Contato[]>(
     store?.contatos && store.contatos.length > 0
@@ -329,8 +463,12 @@ function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | nu
       : [{ nome: "", telefone: "" }]
   );
 
+  const [cepLoading, setCepLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [manualCoords, setManualCoords] = useState(false);
+  const [lat, setLat] = useState<string>(store?.lat ? String(store.lat) : "");
+  const [lng, setLng] = useState<string>(store?.lng ? String(store.lng) : "");
 
   const toggleCategoria = (cat: Categoria) => {
     setFormData((prev: any) => {
@@ -346,10 +484,49 @@ function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | nu
     setContatos(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
   };
 
+  const handleCepBlur = async () => {
+    const cep = (formData.cep || "").trim();
+    if (cep.replace(/\D/g, '').length !== 8) return;
+    setCepLoading(true);
+    const data = await fetchCepData(cep);
+    setCepLoading(false);
+    if (!data) return;
+    setFormData((prev: any) => ({
+      ...prev,
+      endereco: data.logradouro ? `${data.logradouro}${prev.endereco?.match(/,\s*\d+.*$/)?.[0] || ''}` : prev.endereco,
+      bairro: data.bairro || prev.bairro,
+      cidade: data.cidade || prev.cidade,
+      estado: data.estado || prev.estado,
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setSaveError(null);
+
+    let finalLat: number | null = null;
+    let finalLng: number | null = null;
+
+    if (manualCoords) {
+      finalLat = lat ? parseFloat(lat) : null;
+      finalLng = lng ? parseFloat(lng) : null;
+    } else {
+      const geocoded = await geocodeFullAddress({
+        endereco: formData.endereco,
+        bairro: formData.bairro,
+        cidade: formData.cidade,
+        estado: formData.estado,
+      });
+      if (!geocoded) {
+        setSaving(false);
+        setSaveError("Não conseguimos localizar esse endereço no mapa automaticamente. Confira o endereço ou informe a latitude/longitude manualmente abaixo.");
+        setManualCoords(true);
+        return;
+      }
+      finalLat = geocoded.lat;
+      finalLng = geocoded.lng;
+    }
 
     const payload: any = {
       nome_loja: formData.nome_loja,
@@ -364,8 +541,8 @@ function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | nu
       cep: formData.cep || null,
       horario_de_funcionamento: formData.horario_de_funcionamento || null,
       informacoes: formData.informacoes || null,
-      lat: formData.lat ? parseFloat(formData.lat) : null,
-      lng: formData.lng ? parseFloat(formData.lng) : null,
+      lat: finalLat,
+      lng: finalLng,
     };
 
     const validContatos = contatos
@@ -421,7 +598,7 @@ function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | nu
 
         {saveError && (
           <div className="mx-6 mt-4 p-3 bg-red-100 text-red-700 text-sm font-bold rounded-lg border border-red-200">
-            Erro ao salvar: {saveError}
+            {saveError}
           </div>
         )}
 
@@ -436,10 +613,14 @@ function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | nu
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Status *</label>
               <select required value={formData.status || ""} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold">
-                <option value="CREDENCIADA">Credenciada</option>
-                <option value="PRÉ CREDENCIADA">Pré Credenciada</option>
-                <option value="SUSPENSA">Suspensa</option>
+                <option value="" disabled>Selecione...</option>
+                {statusTipos.map(tipo => (
+                  <option key={tipo.id} value={tipo.nome}>{tipo.nome}</option>
+                ))}
               </select>
+              {statusTipos.length === 0 && (
+                <p className="text-[11px] text-amber-600 font-semibold mt-1">Nenhum status cadastrado ainda — use o botão "Status" no topo da página.</p>
+              )}
             </div>
 
             <div className="col-span-full">
@@ -463,13 +644,25 @@ function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | nu
 
             <div className="col-span-full font-bold text-slate-700 border-b border-slate-100 pb-2 mt-4 text-sm uppercase">Localização</div>
 
-            <div className="col-span-full md:col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Endereço (Rua, Número) *</label>
-              <input required type="text" value={formData.endereco || ""} onChange={e => setFormData({...formData, endereco: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">CEP</label>
-              <input type="text" value={formData.cep || ""} onChange={e => setFormData({...formData, cep: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ex: 00000-000" />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formData.cep || ""}
+                  onChange={e => setFormData({...formData, cep: e.target.value})}
+                  onBlur={handleCepBlur}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="Ex: 00000-000"
+                />
+                {cepLoading && <Loader2 size={16} className="animate-spin absolute right-3 top-1/2 -translate-y-1/2 text-blue-500" />}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">Digite o CEP e clique fora do campo: preenchemos rua, bairro, cidade e estado sozinhos.</p>
+            </div>
+
+            <div className="col-span-full md:col-span-2">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Endereço (Rua, Número) *</label>
+              <input required type="text" value={formData.endereco || ""} onChange={e => setFormData({...formData, endereco: e.target.value})} placeholder="Preenchido pelo CEP — complete com o número" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Bairro</label>
@@ -487,6 +680,16 @@ function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | nu
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Região</label>
               <input type="text" value={formData.regiao || ""} onChange={e => setFormData({...formData, regiao: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
+
+            {manualCoords && (
+              <div className="col-span-full bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col gap-3">
+                <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5"><MapPin size={14} /> Não conseguimos localizar esse endereço automaticamente. Informe as coordenadas manualmente:</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <input type="number" step="any" value={lat} onChange={e => setLat(e.target.value)} placeholder="Latitude (ex: -22.9068)" className="px-3 py-2 border border-amber-300 rounded-lg text-sm font-mono" />
+                  <input type="number" step="any" value={lng} onChange={e => setLng(e.target.value)} placeholder="Longitude (ex: -43.1729)" className="px-3 py-2 border border-amber-300 rounded-lg text-sm font-mono" />
+                </div>
+              </div>
+            )}
 
             <div className="col-span-full font-bold text-slate-700 border-b border-slate-100 pb-2 mt-4 text-sm uppercase">Responsável</div>
 
@@ -545,17 +748,6 @@ function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | nu
               <textarea value={formData.informacoes || ""} onChange={e => setFormData({...formData, informacoes: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none min-h-[80px]" />
             </div>
 
-            <div className="col-span-full font-bold text-slate-700 border-b border-slate-100 pb-2 mt-4 text-sm uppercase">Coordenadas do Mapa (Importante para o Pino)</div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Latitude (lat)</label>
-              <input type="number" step="any" value={formData.lat || ""} onChange={e => setFormData({...formData, lat: e.target.value})} placeholder="Ex: -22.9068" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Longitude (lng)</label>
-              <input type="number" step="any" value={formData.lng || ""} onChange={e => setFormData({...formData, lng: e.target.value})} placeholder="Ex: -43.1729" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm" />
-            </div>
-
           </div>
 
           <div className="flex gap-4 pt-4 mt-auto border-t border-slate-100 sticky bottom-0 bg-white">
@@ -564,7 +756,7 @@ function StoreFormModal({ store, onClose, onSave }: { store: Concessionaria | nu
             </button>
             <button type="submit" disabled={saving} className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex flex-row items-center justify-center gap-2 transition-colors disabled:opacity-70 disabled:cursor-not-allowed shadow-sm border border-transparent">
               {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-              {saving ? 'Salvando...' : 'Salvar Concessionária'}
+              {saving ? (manualCoords ? 'Salvando...' : 'Localizando endereço...') : 'Salvar Concessionária'}
             </button>
           </div>
         </form>
