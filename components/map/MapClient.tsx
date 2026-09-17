@@ -345,6 +345,15 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
                    Usar Destino
                 </button>
               </div>
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${popupInfo.lat},${popupInfo.lng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 flex items-center justify-center gap-1.5 w-full px-2 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded border border-slate-200 transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+                Abrir no Google Maps
+              </a>
             </div>
           </Popup>
         )}
