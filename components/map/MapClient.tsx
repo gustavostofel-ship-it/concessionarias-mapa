@@ -328,7 +328,6 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
                     ))}
                   </div>
                 )}
-                {popupInfo.horario_de_funcionamento && <p>🕒 {popupInfo.horario_de_funcionamento}</p>}
               </div>
 
               <div className="flex gap-2 w-full mt-2">

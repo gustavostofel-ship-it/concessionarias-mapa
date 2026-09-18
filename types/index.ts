@@ -30,10 +30,8 @@ export interface Concessionaria {
   endereco: string;
   bairro: string;
   cidade: string;
-  regiao: string;
   estado: string;
   cep: string;
-  horario_de_funcionamento?: string;
   informacoes?: string;
   lat: number;
   lng: number;

@@ -447,8 +447,8 @@ function StatusManagerModal({ statusTipos, onClose, onChange }: { statusTipos: S
 
 const emptyForm = {
   nome_loja: "", proprietario: "", status: "", categorias: [] as Categoria[],
-  regiao: "", cidade: "", bairro: "", cep: "", endereco: "", estado: "",
-  horario_de_funcionamento: "", informacoes: ""
+  cidade: "", bairro: "", cep: "", endereco: "", estado: "",
+  informacoes: ""
 };
 
 function StoreFormModal({ store, statusTipos, onClose, onSave }: { store: Concessionaria | null; statusTipos: StatusTipo[]; onClose: () => void; onSave: () => void }) {
@@ -536,10 +536,8 @@ function StoreFormModal({ store, statusTipos, onClose, onSave }: { store: Conces
       endereco: formData.endereco,
       bairro: formData.bairro || null,
       cidade: formData.cidade,
-      regiao: formData.regiao || null,
       estado: formData.estado || null,
       cep: formData.cep || null,
-      horario_de_funcionamento: formData.horario_de_funcionamento || null,
       informacoes: formData.informacoes || null,
       lat: finalLat,
       lng: finalLng,
@@ -676,11 +674,6 @@ function StoreFormModal({ store, statusTipos, onClose, onSave }: { store: Conces
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Estado</label>
               <input type="text" value={formData.estado || ""} onChange={e => setFormData({...formData, estado: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Região</label>
-              <input type="text" value={formData.regiao || ""} onChange={e => setFormData({...formData, regiao: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-
             {manualCoords && (
               <div className="col-span-full bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col gap-3">
                 <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5"><MapPin size={14} /> Não conseguimos localizar esse endereço automaticamente. Informe as coordenadas manualmente:</p>
@@ -739,10 +732,6 @@ function StoreFormModal({ store, statusTipos, onClose, onSave }: { store: Conces
 
             <div className="col-span-full font-bold text-slate-700 border-b border-slate-100 pb-2 mt-4 text-sm uppercase">Dados Operacionais</div>
 
-            <div className="col-span-full md:col-span-1">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Horário de Funcionamento</label>
-              <input type="text" value={formData.horario_de_funcionamento || ""} onChange={e => setFormData({...formData, horario_de_funcionamento: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
             <div className="col-span-full">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Informações Adicionais / Observações</label>
               <textarea value={formData.informacoes || ""} onChange={e => setFormData({...formData, informacoes: e.target.value})} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none min-h-[80px]" />
