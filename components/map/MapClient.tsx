@@ -10,6 +10,12 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 const MAP_STYLE = process.env.NEXT_PUBLIC_MAPBOX_STYLE || "mapbox://styles/mapbox/streets-v12";
 
+const MAP_LOCALE = {
+  'ScrollZoomBlocker.CtrlMessage': 'Use Ctrl + scroll para dar zoom no mapa',
+  'ScrollZoomBlocker.CmdMessage': 'Use ⌘ + scroll para dar zoom no mapa',
+  'TouchPanBlocker.Message': 'Use dois dedos para mover o mapa',
+};
+
 interface MapClientProps {
   stores: Concessionaria[];
   statusTipos: StatusTipo[];
@@ -141,6 +147,7 @@ export default function MapClient({ stores, statusTipos, origin, destination, fo
         mapboxAccessToken={MAPBOX_TOKEN}
         attributionControl={false}
         cooperativeGestures={true}
+        locale={MAP_LOCALE}
       >
         <div style={{ position: 'absolute', right: 16, bottom: 24, zIndex: 50 }}>
           <NavigationControl position="bottom-right" showCompass={true} showZoom={false} />
