@@ -191,7 +191,7 @@ export default function MapApp({ initialConcessionarias, statusTipos: initialSta
               onClick={() => setIsFilterOpen(true)}
               className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
             >
-              <SlidersHorizontal size={14} /> <span className="hidden sm:inline">Filtros</span>
+              <SlidersHorizontal size={14} /> <span>Filtros</span>
               {activeFilterCount > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 text-white text-[9px] font-black rounded-full flex items-center justify-center">
                   {activeFilterCount}
