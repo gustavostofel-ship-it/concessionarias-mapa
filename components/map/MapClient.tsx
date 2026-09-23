@@ -6,7 +6,6 @@ import Map, { Marker, Popup, Source, Layer, NavigationControl } from 'react-map-
 import type { MapRef } from 'react-map-gl/mapbox';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import useSupercluster from 'use-supercluster';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 const MAP_STYLE = process.env.NEXT_PUBLIC_MAPBOX_STYLE || "mapbox://styles/mapbox/streets-v12";
@@ -57,24 +56,7 @@ export default function MapClient({ stores, statusTipos, origin, destination, fo
 
   const [showTraffic, setShowTraffic] = useState(false);
 
-  const [bounds, setBounds] = useState<[number, number, number, number] | null>(null);
-
-  const points = useMemo(() => {
-    return stores
-      .filter(s => s.lat && s.lng)
-      .map(s => ({
-        type: "Feature" as const,
-        properties: { cluster: false, storeId: s.id, ...s },
-        geometry: { type: "Point" as const, coordinates: [s.lng, s.lat] }
-      }));
-  }, [stores]);
-
-  const { clusters, supercluster } = useSupercluster({
-    points,
-    bounds: bounds || undefined,
-    zoom: viewState.zoom,
-    options: { radius: 75, maxZoom: 14 }
-  });
+  const visibleStores = useMemo(() => stores.filter(s => s.lat && s.lng), [stores]);
 
   useEffect(() => {
     if (origin && mapRef.current) {
@@ -139,15 +121,6 @@ export default function MapClient({ stores, statusTipos, origin, destination, fo
     }
   }, [origin, destination, onRouteFound]);
 
-  const updateBounds = () => {
-    if (mapRef.current) {
-      const b = mapRef.current.getMap().getBounds();
-      if (b) {
-        setBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
-      }
-    }
-  };
-
   if (!MAPBOX_TOKEN) {
     return (
       <div className="absolute inset-0 z-0 h-full w-full flex items-center justify-center bg-slate-100 p-6 text-center">
@@ -163,9 +136,6 @@ export default function MapClient({ stores, statusTipos, origin, destination, fo
       <Map
         {...viewState}
         onMove={evt => setViewState(evt.viewState)}
-        onLoad={updateBounds}
-        onZoomEnd={updateBounds}
-        onDragEnd={updateBounds}
         ref={mapRef}
         mapStyle={MAP_STYLE}
         mapboxAccessToken={MAPBOX_TOKEN}
@@ -207,64 +177,33 @@ export default function MapClient({ stores, statusTipos, origin, destination, fo
           </Source>
         )}
 
-        {clusters.map(cluster => {
-          const [lng, lat] = cluster.geometry.coordinates;
-          const isCluster = cluster.properties?.cluster;
-          const point_count = (cluster.properties as any).point_count;
-
-          if (isCluster) {
-            return (
-              <Marker
-                key={`cluster-${(cluster as any).id}`}
-                longitude={lng}
-                latitude={lat}
-                onClick={e => {
-                   e.originalEvent.stopPropagation();
-                   if (supercluster && typeof (cluster as any).id === 'number') {
-                     const expansionZoom = Math.min(supercluster.getClusterExpansionZoom((cluster as any).id), 20);
-                     mapRef.current?.flyTo({ center: [lng, lat], zoom: expansionZoom, duration: 800 });
-                   }
+        {visibleStores.map(store => (
+          <Marker
+            key={store.id}
+            longitude={store.lng}
+            latitude={store.lat}
+            anchor="bottom"
+            onClick={e => {
+              e.originalEvent.stopPropagation();
+              setPopupInfo(store);
+              mapRef.current?.flyTo({ center: [store.lng, store.lat], zoom: 16, duration: 800 });
+            }}
+            style={{ zIndex: popupInfo?.id === store.id ? 40 : 10 }}
+          >
+            <div className="relative flex flex-col items-center cursor-pointer group">
+              <div
+                className="w-7 h-7 rounded-full border-[3px] border-white transition-transform group-hover:scale-125"
+                style={{
+                  backgroundColor: getPinColor(store.status, statusTipos),
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.3)'
                 }}
-              >
-                <div
-                   className="flex items-center justify-center bg-slate-800 text-white font-black text-xs rounded-full border-[3px] border-white shadow-[0_4px_12px_rgba(0,0,0,0.3)] cursor-pointer hover:scale-110 transition-transform"
-                   style={{ width: `${Math.min(point_count * 2.5 + 30, 50)}px`, height: `${Math.min(point_count * 2.5 + 30, 50)}px` }}
-                >
-                  {point_count}
-                </div>
-              </Marker>
-            );
-          }
-
-          const store = cluster.properties as Concessionaria;
-          return (
-            <Marker
-              key={store.id}
-              longitude={lng}
-              latitude={lat}
-              anchor="bottom"
-              onClick={e => {
-                e.originalEvent.stopPropagation();
-                setPopupInfo(store);
-                mapRef.current?.flyTo({ center: [lng, lat], zoom: 16, duration: 800 });
-              }}
-              style={{ zIndex: popupInfo?.id === store.id ? 40 : 10 }}
-            >
-              <div className="relative flex flex-col items-center cursor-pointer group">
-                <div
-                  className="w-7 h-7 rounded-full border-[3px] border-white transition-transform group-hover:scale-125"
-                  style={{
-                    backgroundColor: getPinColor(store.status, statusTipos),
-                    boxShadow: '0 4px 10px rgba(0,0,0,0.3)'
-                  }}
-                />
-                <div className="mt-1.5 bg-white/95 px-2 py-0.5 border border-slate-200/50 rounded shadow-sm text-[11px] font-black text-slate-800 whitespace-nowrap" style={{ textShadow: '0 1px 2px rgba(255,255,255,0.8)' }}>
-                   {getFirstTwoWords(store.nome_loja)}
-                </div>
+              />
+              <div className="mt-1.5 bg-white/95 px-2 py-0.5 border border-slate-200/50 rounded shadow-sm text-[11px] font-black text-slate-800 whitespace-nowrap" style={{ textShadow: '0 1px 2px rgba(255,255,255,0.8)' }}>
+                 {getFirstTwoWords(store.nome_loja)}
               </div>
-            </Marker>
-          );
-        })}
+            </div>
+          </Marker>
+        ))}
 
         {popupInfo && (
           <Popup

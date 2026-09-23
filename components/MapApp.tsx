@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
 import { Concessionaria, Categoria, CATEGORIAS, StatusTipo } from '@/types';
-import { AddressSearch } from './AddressSearch';
-import { SlidersHorizontal, Map as MapIcon, List as ListIcon, Lock, X, Info, MapPin, User, Phone, Navigation } from 'lucide-react';
+import { AddressSearch, AddressSearchRef } from './AddressSearch';
+import { SlidersHorizontal, Map as MapIcon, List as ListIcon, Lock, X, Info, MapPin, User, Phone, Navigation, Zap } from 'lucide-react';
 
 const MapClient = dynamic(() => import('./map/MapClient'), {
   ssr: false,
@@ -46,7 +47,10 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
-export default function MapApp({ initialConcessionarias, statusTipos }: MapAppProps) {
+export default function MapApp({ initialConcessionarias, statusTipos: initialStatusTipos }: MapAppProps) {
+  const [concessionarias, setConcessionarias] = useState<Concessionaria[]>(initialConcessionarias);
+  const [statusTipos, setStatusTipos] = useState<StatusTipo[]>(initialStatusTipos);
+
   const [view, setView] = useState<'mapa' | 'lista'>('mapa');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>(TODAS);
@@ -56,6 +60,35 @@ export default function MapApp({ initialConcessionarias, statusTipos }: MapAppPr
   const [destination, setDestination] = useState<Concessionaria | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; time: string }>({ distance: '', time: '' });
   const [focusStoreId, setFocusStoreId] = useState<string | null>(null);
+  const searchRef = useRef<AddressSearchRef>(null);
+
+  // Mantém os dados em tempo real: qualquer alteração no admin reflete aqui na hora.
+  useEffect(() => {
+    const fetchStores = async () => {
+      const { data } = await supabase
+        .from('concessionarias')
+        .select('*, contatos(*)')
+        .not('lat', 'is', null)
+        .not('lng', 'is', null)
+        .limit(500);
+      if (data) setConcessionarias(data as Concessionaria[]);
+    };
+    const fetchStatusTipos = async () => {
+      const { data } = await supabase.from('status_tipos').select('*').order('ordem', { ascending: true });
+      if (data) setStatusTipos(data as StatusTipo[]);
+    };
+
+    const channel = supabase
+      .channel('public-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'concessionarias' }, fetchStores)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contatos' }, fetchStores)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'status_tipos' }, fetchStatusTipos)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const handleRouteFound = useCallback((distance: string, time: string) => {
     setRouteInfo({ distance, time });
@@ -65,6 +98,7 @@ export default function MapApp({ initialConcessionarias, statusTipos }: MapAppPr
     setOrigin(null);
     setDestination(null);
     setRouteInfo({ distance: '', time: '' });
+    searchRef.current?.clear();
   };
 
   const handleClearFilters = () => {
@@ -80,13 +114,14 @@ export default function MapApp({ initialConcessionarias, statusTipos }: MapAppPr
 
   const matchesFilters = (store: Concessionaria) => {
     const statusOk = statusFilter === TODAS || store.status === statusFilter;
-    const categoriaOk = categoriaFilter.length === 0 || (store.categorias || []).some(c => categoriaFilter.includes(c));
+    // Precisa ter TODAS as categorias marcadas (não basta ter qualquer uma).
+    const categoriaOk = categoriaFilter.length === 0 || categoriaFilter.every(c => (store.categorias || []).includes(c));
     return statusOk && categoriaOk;
   };
 
   const filteredStores = useMemo(() => {
-    return initialConcessionarias.filter(matchesFilters);
-  }, [initialConcessionarias, statusFilter, categoriaFilter]);
+    return concessionarias.filter(matchesFilters);
+  }, [concessionarias, statusFilter, categoriaFilter]);
 
   const sortedStores = useMemo(() => {
     const withDistance = filteredStores
@@ -103,6 +138,8 @@ export default function MapApp({ initialConcessionarias, statusTipos }: MapAppPr
     }
     return withDistance;
   }, [filteredStores, origin]);
+
+  const nearestThree = useMemo(() => origin ? sortedStores.slice(0, 3) : [], [origin, sortedStores]);
 
   const handleUseDestination = (store: Concessionaria) => {
     setDestination(store);
@@ -124,11 +161,13 @@ export default function MapApp({ initialConcessionarias, statusTipos }: MapAppPr
 
           <div className="flex-1 min-w-[180px]">
             <AddressSearch
+              ref={searchRef}
               className="w-full"
               onSelectAddress={(loc) => {
                 setOrigin(loc);
                 setRouteInfo({ distance: '', time: '' });
               }}
+              onClear={handleClearOrigin}
             />
           </div>
 
@@ -194,16 +233,43 @@ export default function MapApp({ initialConcessionarias, statusTipos }: MapAppPr
       {/* Conteúdo principal */}
       <div className="relative flex-1 min-h-0">
         {view === 'mapa' ? (
-          <MapClient
-            stores={filteredStores}
-            statusTipos={statusTipos}
-            origin={origin}
-            destination={destination}
-            focusStoreId={focusStoreId}
-            onSetDestination={handleUseDestination}
-            onClearOrigin={handleClearOrigin}
-            onRouteFound={handleRouteFound}
-          />
+          <>
+            <MapClient
+              stores={filteredStores}
+              statusTipos={statusTipos}
+              origin={origin}
+              destination={destination}
+              focusStoreId={focusStoreId}
+              onSetDestination={handleUseDestination}
+              onClearOrigin={handleClearOrigin}
+              onRouteFound={handleRouteFound}
+            />
+
+            {nearestThree.length > 0 && (
+              <div className="absolute top-3 left-3 z-[100] w-[280px] max-w-[calc(100%-24px)] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
+                <div className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-50 border-b border-blue-100">
+                  <Zap size={14} className="text-blue-600" />
+                  <h2 className="text-[12px] font-black text-slate-800 uppercase tracking-tight">3 mais próximas de você</h2>
+                </div>
+                <div className="flex flex-col divide-y divide-slate-100 max-h-[50vh] overflow-y-auto">
+                  {nearestThree.map(store => (
+                    <div key={store.id} className="p-3 flex items-center justify-between gap-2">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[13px] font-bold text-slate-800 truncate">{store.nome_loja}</span>
+                        <span className="text-[11px] font-bold text-emerald-600">{store.distancia_km?.toFixed(1)} km</span>
+                      </div>
+                      <button
+                        onClick={() => handleUseDestination(store)}
+                        className="flex-shrink-0 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded transition"
+                      >
+                        Destino
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <div className="absolute inset-0 overflow-y-auto bg-slate-50 p-3 md:p-6">
             <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -344,7 +410,8 @@ function FilterModal({ statusTipos, statusFilter, categoriaFilter, onSetStatus, 
           ))}
         </div>
 
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Categoria</p>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Categoria</p>
+        <p className="text-[11px] text-slate-400 mb-2">Marcando mais de uma, mostra só quem tem todas ao mesmo tempo.</p>
         <div className="flex flex-wrap gap-2 mb-6">
           {CATEGORIAS.map(cat => {
             const active = categoriaFilter.includes(cat.value);

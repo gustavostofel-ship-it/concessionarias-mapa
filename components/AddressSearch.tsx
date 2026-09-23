@@ -12,10 +12,11 @@ export interface AddressSearchRef {
 
 interface AddressSearchProps {
   onSelectAddress: (location: { lat: number; lng: number; address: string }) => void;
+  onClear?: () => void;
   className?: string;
 }
 
-export const AddressSearch = forwardRef<AddressSearchRef, AddressSearchProps>(({ onSelectAddress, className = '' }, ref) => {
+export const AddressSearch = forwardRef<AddressSearchRef, AddressSearchProps>(({ onSelectAddress, onClear, className = '' }, ref) => {
   const [query, setQuery] = useState('');
   const [isSelected, setIsSelected] = useState(false);
   const [debouncedQuery] = useDebounce(query, 500);
@@ -100,10 +101,11 @@ export const AddressSearch = forwardRef<AddressSearchRef, AddressSearchProps>(({
             onClick={(e) => { 
                 e.stopPropagation(); 
                 e.preventDefault();
-                setQuery(''); 
-                setResults([]); 
-                setIsSelected(false); 
+                setQuery('');
+                setResults([]);
+                setIsSelected(false);
                 setIsOpen(false);
+                onClear?.();
             }}
             title="Limpar endereço"
           >
