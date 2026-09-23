@@ -1,6 +1,6 @@
-# Mapa de Concessionárias
+# Mapa de Agências
 
-Sistema para localizar concessionárias credenciadas no mapa, filtrando por status e categoria de veículo (carro, moto, alto padrão, blindado), com busca de endereço e cálculo de rota. Pensado para ser enviado a associados: a tela principal não exige login.
+Sistema para localizar agências credenciadas no mapa, filtrando por status e categoria de veículo (carro, moto, alto padrão, blindado), com busca de endereço/CEP e cálculo de rota. Pensado para ser enviado a associados: a tela principal não exige login.
 
 ## Rodando localmente
 

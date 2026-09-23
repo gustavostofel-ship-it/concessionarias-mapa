@@ -85,7 +85,7 @@ export const AddressSearch = forwardRef<AddressSearchRef, AddressSearchProps>(({
         <input
           type="text"
           className="w-full bg-[#f4f8fc] border border-blue-100 shadow-sm rounded-lg py-3 px-4 pr-10 text-sm font-semibold text-blue-900 placeholder:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-          placeholder="Ex: Rua XYZ, 123"
+          placeholder="Seu endereço ou CEP"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);

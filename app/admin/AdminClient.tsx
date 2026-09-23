@@ -176,7 +176,7 @@ function AdminDashboard({ onLogout, userEmail }: { onLogout: () => void; userEma
             <ArrowLeft size={20} />
           </Link>
           <div className="flex items-center gap-3">
-             <h1 className="text-xl font-black text-slate-800">Painel de Concessionárias</h1>
+             <h1 className="text-xl font-black text-slate-800">Painel de Agências</h1>
           </div>
         </div>
 

@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import AdminClient from "./AdminClient";
 
 export const metadata: Metadata = {
-  title: 'Admin - Concessionárias',
+  title: 'Admin - Agências',
 };
 
 export default function AdminPage() {

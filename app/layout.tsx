@@ -2,8 +2,8 @@ import type {Metadata, Viewport} from 'next';
 import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
-  title: 'Mapa de Concessionárias',
-  description: 'Sistema para localizar e filtrar concessionárias credenciadas por categoria de veículo',
+  title: 'Mapa de Agências',
+  description: 'Sistema para localizar e filtrar agências credenciadas por categoria de veículo',
 };
 
 export const viewport: Viewport = {

@@ -7,8 +7,6 @@ import type { MapRef } from 'react-map-gl/mapbox';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import useSupercluster from 'use-supercluster';
-import { Lock } from 'lucide-react';
-import Link from 'next/link';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 const MAP_STYLE = process.env.NEXT_PUBLIC_MAPBOX_STYLE || "mapbox://styles/mapbox/streets-v12";
@@ -18,13 +16,10 @@ interface MapClientProps {
   statusTipos: StatusTipo[];
   origin: { lat: number; lng: number; address: string } | null;
   destination: Concessionaria | null;
-  searchedLocation: { lat: number; lng: number; address: string } | null;
-  onSetOriginFromPin: (store: Concessionaria) => void;
+  focusStoreId: string | null;
   onSetDestination: (store: Concessionaria) => void;
-  onSetOriginFromSearch: () => void;
-  onSetDestinationFromSearch: () => void;
+  onClearOrigin: () => void;
   onRouteFound: (distance: string, time: string) => void;
-  onClearEvent?: () => void;
 }
 
 const BRASIL_CENTER = { lat: -15.7801, lng: -47.9292 };
@@ -42,11 +37,11 @@ function labelForCategoria(value: string) {
   return CATEGORIAS.find(c => c.value === value)?.label || value;
 }
 
-export default function MapClient({ stores, statusTipos, origin, destination, searchedLocation, onSetOriginFromPin, onSetDestination, onSetOriginFromSearch, onSetDestinationFromSearch, onRouteFound, onClearEvent }: MapClientProps) {
+export default function MapClient({ stores, statusTipos, origin, destination, focusStoreId, onSetDestination, onClearOrigin, onRouteFound }: MapClientProps) {
   const mapRef = useRef<MapRef>(null);
   const [popupInfo, setPopupInfo] = useState<Concessionaria | null>(null);
   const [routeGeoJSON, setRouteGeoJSON] = useState<any>(null);
-  const [showEventPopup, setShowEventPopup] = useState(false);
+  const [showOriginPopup, setShowOriginPopup] = useState(false);
 
   const initialCenterLat = stores.length > 0 && stores[0].lat ? stores[0].lat : BRASIL_CENTER.lat;
   const initialCenterLng = stores.length > 0 && stores[0].lng ? stores[0].lng : BRASIL_CENTER.lng;
@@ -61,7 +56,6 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
   });
 
   const [showTraffic, setShowTraffic] = useState(false);
-  const [enableClusters, setEnableClusters] = useState(true);
 
   const [bounds, setBounds] = useState<[number, number, number, number] | null>(null);
 
@@ -83,15 +77,24 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
   });
 
   useEffect(() => {
-    if (searchedLocation && mapRef.current) {
-      setShowEventPopup(true);
+    if (origin && mapRef.current) {
+      setShowOriginPopup(true);
       mapRef.current.flyTo({
-        center: [searchedLocation.lng, searchedLocation.lat],
+        center: [origin.lng, origin.lat],
         zoom: 15,
         duration: 1500
       });
     }
-  }, [searchedLocation]);
+  }, [origin]);
+
+  useEffect(() => {
+    if (!focusStoreId) return;
+    const store = stores.find(s => s.id === focusStoreId);
+    if (store && mapRef.current) {
+      setPopupInfo(store);
+      mapRef.current.flyTo({ center: [store.lng, store.lat], zoom: 16, duration: 800 });
+    }
+  }, [focusStoreId, stores]);
 
   useEffect(() => {
     const fetchRoute = async () => {
@@ -172,21 +175,8 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
           <NavigationControl position="bottom-right" showCompass={true} showZoom={false} />
         </div>
 
-        {/* Controles flutuantes */}
-        <div className="absolute top-[120px] md:top-4 right-2 md:right-4 flex flex-col md:flex-row items-end md:items-center justify-end gap-2 z-50 mb-3 px-2">
-          <Link
-            href="/admin"
-            className="flex-shrink-0 bg-blue-100 hover:bg-blue-200 text-blue-600 p-2 rounded-lg shadow-md transition-colors flex items-center justify-center pointer-events-auto h-[34px] w-[34px]"
-            title="Acesso Administrativo"
-          >
-            <Lock size={16} />
-          </Link>
-          <button
-            onClick={() => setEnableClusters(!enableClusters)}
-            className="bg-white px-3 py-2 rounded-lg shadow-md text-xs font-bold text-slate-700 hover:bg-slate-50 border border-slate-200 transition-colors flex items-center gap-2 pointer-events-auto min-h-[34px]"
-          >
-            <span>{enableClusters ? '📍 Desagrupar' : '📍 Agrupar'}</span>
-          </button>
+        {/* Controle de trânsito */}
+        <div className="absolute top-2 right-2 md:top-4 md:right-4 flex items-center justify-end gap-2 z-50">
           <button
             onClick={() => setShowTraffic(!showTraffic)}
             className="bg-white px-3 py-2 rounded-lg shadow-md text-xs font-bold text-slate-700 hover:bg-slate-50 border border-slate-200 transition-colors flex items-center gap-2"
@@ -217,9 +207,9 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
           </Source>
         )}
 
-        {(enableClusters ? clusters : points).map(cluster => {
+        {clusters.map(cluster => {
           const [lng, lat] = cluster.geometry.coordinates;
-          const isCluster = enableClusters && cluster.properties?.cluster;
+          const isCluster = cluster.properties?.cluster;
           const point_count = (cluster.properties as any).point_count;
 
           if (isCluster) {
@@ -285,7 +275,7 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
              closeOnClick={false}
              closeButton={false}
              className="z-50"
-             maxWidth="260px"
+             maxWidth="270px"
           >
             <div className="p-1 relative">
               <button
@@ -328,43 +318,38 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
                     ))}
                   </div>
                 )}
+                {popupInfo.informacoes && <p className="pt-1 italic">{popupInfo.informacoes}</p>}
               </div>
 
-              <div className="flex gap-2 w-full mt-2">
-                <button
-                   onClick={() => { onSetOriginFromPin(popupInfo); setPopupInfo(null); }}
-                   className="flex-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded transition"
-                >
-                   Usar Origem
-                </button>
+              <div className="flex flex-col gap-2 w-full mt-2">
                 <button
                    onClick={() => { onSetDestination(popupInfo); setPopupInfo(null); }}
-                   className="flex-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded shadow-sm transition"
+                   className="w-full px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded shadow-sm transition"
                 >
-                   Usar Destino
+                   Usar como Destino
                 </button>
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${popupInfo.lat},${popupInfo.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded border border-slate-200 transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+                  Abrir no Google Maps
+                </a>
               </div>
-              <a
-                href={`https://www.google.com/maps/dir/?api=1&destination=${popupInfo.lat},${popupInfo.lng}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 flex items-center justify-center gap-1.5 w-full px-2 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded border border-slate-200 transition"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
-                Abrir no Google Maps
-              </a>
             </div>
           </Popup>
         )}
 
-        {searchedLocation && (
-          <Marker longitude={searchedLocation.lng} latitude={searchedLocation.lat} anchor="bottom">
+        {origin && (
+          <Marker longitude={origin.lng} latitude={origin.lat} anchor="bottom">
              <div
                className="relative flex flex-col items-center z-40 cursor-pointer group"
-               onClick={(e) => { e.stopPropagation(); setShowEventPopup(true); }}
+               onClick={(e) => { e.stopPropagation(); setShowOriginPopup(true); }}
              >
               <div style={{ filter: 'drop-shadow(0 6px 8px rgb(0 0 0 / 0.4))' }}>
-                 <svg viewBox="0 0 24 24" width="44" height="44" className="transition-transform group-hover:scale-110">
+                 <svg viewBox="0 0 24 24" width="40" height="40" className="transition-transform group-hover:scale-110">
                      <path d="M12 1.5C7.305 1.5 3.5 5.305 3.5 10c0 5.25 8.5 12.5 8.5 12.5s8.5-7.25 8.5-12.5c0-4.695-3.805-8.5-8.5-8.5z" fill="#000000" stroke="#ffffff" strokeWidth="2.5"></path>
                      <circle cx="12" cy="9.5" r="3.5" fill="#ffffff"></circle>
                  </svg>
@@ -373,13 +358,13 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
           </Marker>
         )}
 
-        {searchedLocation && showEventPopup && (
+        {origin && showOriginPopup && (
           <Popup
-            longitude={searchedLocation.lng}
-            latitude={searchedLocation.lat}
+            longitude={origin.lng}
+            latitude={origin.lat}
             anchor="bottom"
             offset={24}
-            onClose={() => setShowEventPopup(false)}
+            onClose={() => setShowOriginPopup(false)}
             closeOnClick={false}
             closeButton={false}
             className="z-50"
@@ -387,49 +372,28 @@ export default function MapClient({ stores, statusTipos, origin, destination, se
           >
             <div className="p-1 pb-0 relative">
                <button
-                 onClick={() => setShowEventPopup(false)}
+                 onClick={() => setShowOriginPopup(false)}
                  className="absolute top-0 right-0 p-1 text-slate-400 hover:text-slate-800 transition-colors bg-transparent rounded-full hover:bg-slate-100 focus:outline-none"
                  title="Fechar"
                >
                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                </button>
-               <button
-                 onClick={() => { setShowEventPopup(false); onClearEvent?.(); }}
-                 className="absolute top-0 right-7 p-1 text-slate-400 hover:text-white transition-colors bg-white border border-slate-200 rounded-md hover:bg-red-500 hover:border-red-600 shadow-sm focus:outline-none"
-                 title="Remover Evento e Rota"
-               >
-                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-               </button>
-               <h3 className="font-bold text-[10px] mb-1 uppercase tracking-wider text-slate-400 pr-16 mt-1">Local do Evento</h3>
-                <p className="text-sm font-semibold text-slate-800 mb-3 pr-10 line-clamp-2" title={searchedLocation.address}>{searchedLocation.address}</p>
-                <div className="flex gap-2 w-full">
-                  <button onClick={() => { onSetOriginFromSearch(); setShowEventPopup(false); }} className="flex-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded transition">Origem</button>
-                  <button onClick={() => { onSetDestinationFromSearch(); setShowEventPopup(false); }} className="flex-1 px-2 py-1.5 bg-[#1e3a8a] text-white text-[11px] font-bold rounded transition hover:bg-blue-800">Destino</button>
-                </div>
+               <h3 className="font-bold text-[10px] mb-1 uppercase tracking-wider text-slate-400 pr-6 mt-1">Seu endereço</h3>
+                <p className="text-sm font-semibold text-slate-800 mb-3 pr-2 line-clamp-2" title={origin.address}>{origin.address}</p>
+                <button
+                  onClick={() => { onClearOrigin(); setShowOriginPopup(false); }}
+                  className="w-full px-2 py-1.5 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-700 text-[11px] font-bold rounded transition"
+                >
+                  Remover endereço
+                </button>
              </div>
           </Popup>
         )}
 
-        {origin && !stores.some(s => s.lat === origin.lat && s.lng === origin.lng) && (
-          <Marker longitude={origin.lng} latitude={origin.lat} anchor="bottom">
-            <div className="flex flex-col items-center cursor-pointer group">
-              <div className="absolute bottom-full mb-1 opacity-100 bg-[#000000] text-white px-2 py-0.5 rounded shadow text-[9px] font-bold uppercase tracking-widest pointer-events-none">
-                 Origem
-              </div>
-              <div style={{ width: '32px', height: '32px', filter: 'drop-shadow(0 4px 6px rgb(0 0 0 / 0.1))' }}>
-                 <svg viewBox="0 0 24 24" width="32" height="32" fill="white">
-                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" stroke="#e5e7eb" strokeWidth="1"></path>
-                     <circle cx="12" cy="9" r="4" fill="#000000"></circle>
-                 </svg>
-              </div>
-            </div>
-          </Marker>
-        )}
-
-        {destination && !stores.some(s => s.lat === destination.lat && s.lng === destination.lng) && (
+        {destination && (
           <Marker longitude={destination.lng} latitude={destination.lat} anchor="bottom">
             <div className="flex flex-col items-center cursor-pointer group">
-              <div className="absolute bottom-full mb-1 opacity-100 bg-[#ca8a04] text-white px-2 py-0.5 rounded shadow text-[9px] font-bold uppercase tracking-widest pointer-events-none">
+              <div className="absolute bottom-full mb-1 opacity-100 bg-[#ca8a04] text-white px-2 py-0.5 rounded shadow text-[9px] font-bold uppercase tracking-widest pointer-events-none whitespace-nowrap">
                  Destino
               </div>
               <div style={{ width: '32px', height: '32px', filter: 'drop-shadow(0 4px 6px rgb(0 0 0 / 0.1))' }}>

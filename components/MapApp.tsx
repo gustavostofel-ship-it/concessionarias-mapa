@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useRef, useMemo } from 'react';
-import { motion } from 'motion/react';
+import { useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { Concessionaria, Categoria, CATEGORIAS, StatusTipo } from '@/types';
-import { AddressSearch, AddressSearchRef } from './AddressSearch';
+import { AddressSearch } from './AddressSearch';
+import { SlidersHorizontal, Map as MapIcon, List as ListIcon, Lock, X, Info, MapPin, User, Phone, Navigation } from 'lucide-react';
 
 const MapClient = dynamic(() => import('./map/MapClient'), {
   ssr: false,
@@ -25,285 +26,349 @@ interface MapAppProps {
 
 const TODAS = '__TODAS__';
 
+function statusColor(nome: string, statusTipos: StatusTipo[]) {
+  return statusTipos.find(t => t.nome === nome)?.cor || '#64748B';
+}
+
+function labelForCategoria(value: string) {
+  return CATEGORIAS.find(c => c.value === value)?.label || value;
+}
+
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export default function MapApp({ initialConcessionarias, statusTipos }: MapAppProps) {
+  const [view, setView] = useState<'mapa' | 'lista'>('mapa');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>(TODAS);
+  const [categoriaFilter, setCategoriaFilter] = useState<Categoria[]>([]);
+
   const [origin, setOrigin] = useState<{ lat: number; lng: number; address: string } | null>(null);
   const [destination, setDestination] = useState<Concessionaria | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; time: string }>({ distance: '', time: '' });
-
-  const [searchedLocation, setSearchedLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>(TODAS);
-  const [categoriaFilter, setCategoriaFilter] = useState<Categoria[]>([]);
-  const [isDrawerExpanded, setIsDrawerExpanded] = useState(false);
-  const searchRefDesktop = useRef<AddressSearchRef>(null);
-  const searchRefMobile = useRef<AddressSearchRef>(null);
+  const [focusStoreId, setFocusStoreId] = useState<string | null>(null);
 
   const handleRouteFound = useCallback((distance: string, time: string) => {
     setRouteInfo({ distance, time });
   }, []);
 
-  const handleClearRouting = () => {
+  const handleClearOrigin = () => {
     setOrigin(null);
     setDestination(null);
     setRouteInfo({ distance: '', time: '' });
-    setSearchedLocation(null);
-    searchRefDesktop.current?.clear();
-    searchRefMobile.current?.clear();
+  };
+
+  const handleClearFilters = () => {
+    setStatusFilter(TODAS);
+    setCategoriaFilter([]);
   };
 
   const toggleCategoria = (cat: Categoria) => {
     setCategoriaFilter(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
   };
 
-  const matchesStatus = (store: Concessionaria) => {
-    if (statusFilter === TODAS) return true;
-    return store.status === statusFilter;
-  };
+  const activeFilterCount = (statusFilter !== TODAS ? 1 : 0) + categoriaFilter.length;
 
-  const matchesCategoria = (store: Concessionaria) => {
-    if (categoriaFilter.length === 0) return true;
-    return (store.categorias || []).some(c => categoriaFilter.includes(c));
+  const matchesFilters = (store: Concessionaria) => {
+    const statusOk = statusFilter === TODAS || store.status === statusFilter;
+    const categoriaOk = categoriaFilter.length === 0 || (store.categorias || []).some(c => categoriaFilter.includes(c));
+    return statusOk && categoriaOk;
   };
 
   const filteredStores = useMemo(() => {
-    return initialConcessionarias.filter(s => matchesStatus(s) && matchesCategoria(s));
+    return initialConcessionarias.filter(matchesFilters);
   }, [initialConcessionarias, statusFilter, categoriaFilter]);
 
-  const filteredNearestStores = useMemo(() => {
-    if (!searchedLocation) return [];
-
-    const candidates = initialConcessionarias.filter(s => matchesStatus(s) && matchesCategoria(s));
-
-    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-      const R = 6371;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    };
-
-    const computed = candidates
+  const sortedStores = useMemo(() => {
+    const withDistance = filteredStores
       .filter(s => s.lat != null && s.lng != null)
       .map(s => ({
         ...s,
-        distancia_km: calculateDistance(searchedLocation.lat, searchedLocation.lng, s.lat, s.lng)
+        distancia_km: origin ? calculateDistance(origin.lat, origin.lng, s.lat, s.lng) : null,
       }));
 
-    computed.sort((a, b) => a.distancia_km - b.distancia_km);
-    return computed.slice(0, 3);
-  }, [initialConcessionarias, searchedLocation, statusFilter, categoriaFilter]);
+    if (origin) {
+      withDistance.sort((a, b) => (a.distancia_km ?? Infinity) - (b.distancia_km ?? Infinity));
+    } else {
+      withDistance.sort((a, b) => a.nome_loja.localeCompare(b.nome_loja));
+    }
+    return withDistance;
+  }, [filteredStores, origin]);
 
-  const renderRoutingAndFilters = () => (
-    <div className="flex flex-col w-full bg-white">
+  const handleUseDestination = (store: Concessionaria) => {
+    setDestination(store);
+    setRouteInfo({ distance: '', time: '' });
+    setView('mapa');
+    setFocusStoreId(store.id);
+    setTimeout(() => setFocusStoreId(null), 100);
+  };
 
-      <div className="flex flex-col gap-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm min-w-full">
-         <div className="flex items-start gap-2">
-            <span className="w-20 text-[12px] font-bold text-emerald-600 uppercase mt-0.5">ORIGEM:</span>
-            <span className="text-[13px] text-slate-500 font-medium leading-tight flex-1">{origin ? origin.address : 'Aguardando...'}</span>
-         </div>
-         <div className="flex items-start gap-2">
-            <span className="w-20 text-[12px] font-bold text-blue-600 uppercase mt-0.5">DESTINO:</span>
-            <span className="text-[13px] text-slate-500 font-medium leading-tight flex-1">{destination ? destination.nome_loja : 'Aguardando...'}</span>
-         </div>
+  return (
+    <div className="relative w-full h-[100dvh] overflow-hidden bg-slate-50 font-sans flex flex-col">
 
-         {routeInfo.distance && routeInfo.time && (
-            <div className="mt-2 text-sm bg-blue-50 rounded-lg p-3 flex gap-4 border border-blue-100">
-              <div className="flex-1 text-center bg-white p-2 rounded shadow-sm border border-blue-100">
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">Distância</span>
-                <p className="text-lg font-black text-slate-800">{routeInfo.distance}</p>
-              </div>
-              <div className="flex-1 text-center bg-white p-2 rounded shadow-sm border border-blue-100">
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">Tempo</span>
-                <p className="text-lg font-black text-slate-800">{routeInfo.time}</p>
-              </div>
+      {/* Barra superior */}
+      <header className="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm z-[200]">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 md:px-5">
+          <h1 className="text-[15px] md:text-[18px] font-black text-[#1e3a8a] tracking-tight whitespace-nowrap mr-1">
+            Mapa de Agências
+          </h1>
+
+          <div className="flex-1 min-w-[180px]">
+            <AddressSearch
+              className="w-full"
+              onSelectAddress={(loc) => {
+                setOrigin(loc);
+                setRouteInfo({ distance: '', time: '' });
+              }}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="flex bg-slate-100 rounded-lg p-1">
+              <button
+                onClick={() => setView('mapa')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${view === 'mapa' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <MapIcon size={14} /> Mapa
+              </button>
+              <button
+                onClick={() => setView('lista')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${view === 'lista' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <ListIcon size={14} /> Lista
+              </button>
             </div>
-         )}
 
-         {(origin || destination) && (
             <button
-              onClick={handleClearRouting}
-              className="w-full py-2.5 mt-2 bg-[#f4f8fc] hover:bg-blue-50 text-[#1e3a8a] font-black text-[13px] rounded-xl border border-blue-100 transition-colors uppercase tracking-widest cursor-pointer"
+              onClick={() => setIsFilterOpen(true)}
+              className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
             >
-              Limpar Rota
+              <SlidersHorizontal size={14} /> <span className="hidden sm:inline">Filtros</span>
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 text-white text-[9px] font-black rounded-full flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
             </button>
-         )}
+
+            <Link
+              href="/admin"
+              className="flex items-center justify-center p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 transition-colors"
+              title="Acesso Administrativo"
+            >
+              <Lock size={16} />
+            </Link>
+          </div>
+        </div>
+
+        {/* Instrução de uso */}
+        <div className="flex items-start gap-2 px-3 md:px-5 pb-2.5 text-[12px] text-blue-700 bg-blue-50/60">
+          <Info size={14} className="flex-shrink-0 mt-0.5" />
+          <p><strong>Escolha a agência mais próxima do seu endereço.</strong> Antes, filtre o tipo de veículo em "Filtros".</p>
+        </div>
+
+        {/* Barra de rota ativa */}
+        {(origin || destination) && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 md:px-5 py-2 bg-slate-800 text-white text-[12px]">
+            <span className="truncate max-w-[45%]"><strong className="text-emerald-400">Origem:</strong> {origin ? origin.address : 'aguardando...'}</span>
+            <span className="truncate max-w-[45%]"><strong className="text-amber-400">Destino:</strong> {destination ? destination.nome_loja : 'aguardando...'}</span>
+            {routeInfo.distance && (
+              <span className="font-bold">{routeInfo.distance} • {routeInfo.time}</span>
+            )}
+            <button onClick={handleClearOrigin} className="ml-auto text-slate-300 hover:text-white underline text-[11px] font-bold">
+              Limpar rota
+            </button>
+          </div>
+        )}
+      </header>
+
+      {/* Conteúdo principal */}
+      <div className="relative flex-1 min-h-0">
+        {view === 'mapa' ? (
+          <MapClient
+            stores={filteredStores}
+            statusTipos={statusTipos}
+            origin={origin}
+            destination={destination}
+            focusStoreId={focusStoreId}
+            onSetDestination={handleUseDestination}
+            onClearOrigin={handleClearOrigin}
+            onRouteFound={handleRouteFound}
+          />
+        ) : (
+          <div className="absolute inset-0 overflow-y-auto bg-slate-50 p-3 md:p-6">
+            <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {sortedStores.map(store => (
+                <StoreCard
+                  key={store.id}
+                  store={store}
+                  color={statusColor(store.status, statusTipos)}
+                  onUseDestination={() => handleUseDestination(store)}
+                />
+              ))}
+              {sortedStores.length === 0 && (
+                <div className="col-span-full text-center py-16 text-slate-400 font-medium">
+                  Nenhuma agência encontrada com os filtros atuais.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {searchedLocation && (
-        <div className="mt-6 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">⚡</span>
-            <h2 className="text-[14px] font-black text-slate-800 uppercase tracking-tight">Concessionárias Mais Próximas</h2>
-          </div>
+      {isFilterOpen && (
+        <FilterModal
+          statusTipos={statusTipos}
+          statusFilter={statusFilter}
+          categoriaFilter={categoriaFilter}
+          onSetStatus={setStatusFilter}
+          onToggleCategoria={toggleCategoria}
+          onClear={handleClearFilters}
+          onClose={() => setIsFilterOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
 
-          <div className="flex flex-col gap-2">
-             {filteredNearestStores.length > 0 ? filteredNearestStores.map(s => (
-                <div key={s.id} className="flex items-center justify-between p-3 border border-slate-200 hover:border-blue-300 rounded-xl bg-white shadow-sm transition-colors group">
-                   <div className="flex flex-col flex-1 pr-3">
-                      <span className="text-[13px] font-bold text-slate-800 leading-tight line-clamp-1">{s.nome_loja}</span>
-                      <span className="text-[11px] font-bold text-emerald-600 mt-0.5">{(s as any).distancia_km?.toFixed(1)} km de distância</span>
-                   </div>
-                   <button
-                      onClick={() => {
-                         setOrigin(searchedLocation);
-                         setDestination(s);
-                         setRouteInfo({ distance: '', time: '' });
-                         if (window.innerWidth < 768) setIsDrawerExpanded(false);
-                      }}
-                      className="flex-shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold uppercase tracking-wider rounded border border-transparent group-hover:shadow-md transition-all"
-                   >
-                      Traçar Rota
-                   </button>
-                </div>
-             )) : (
-               <p className="text-xs text-slate-500 font-medium">Nenhuma concessionária encontrada nesta região.</p>
-             )}
-          </div>
+function StoreCard({ store, color, onUseDestination }: { store: Concessionaria & { distancia_km?: number | null }; color: string; onUseDestination: () => void }) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-1.5">
+          <span
+            className="text-[10px] font-bold px-2 py-0.5 rounded-full border w-fit uppercase tracking-wider"
+            style={{ backgroundColor: `${color}1A`, color, borderColor: `${color}55` }}
+          >
+            {store.status}
+          </span>
+          <h3 className="font-bold text-slate-800 leading-tight">{store.nome_loja}</h3>
+        </div>
+        {store.distancia_km != null && (
+          <span className="flex-shrink-0 text-[11px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg whitespace-nowrap">
+            {store.distancia_km.toFixed(1)} km
+          </span>
+        )}
+      </div>
+
+      {store.categorias?.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {store.categorias.map(c => (
+            <span key={c} className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wide">
+              {labelForCategoria(c)}
+            </span>
+          ))}
         </div>
       )}
 
-      <div className="h-px bg-slate-100 w-full my-6"></div>
-
-      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Status</p>
-      <div className="grid grid-cols-2 gap-y-3 gap-x-2 pb-4">
-         {statusTipos.map(tipo => (
-           <div key={tipo.id} className="flex items-center gap-2 cursor-pointer group" onClick={() => setStatusFilter(statusFilter === tipo.nome ? TODAS : tipo.nome)}>
-             <div
-               className={`w-3.5 h-3.5 rounded-full flex-shrink-0 transition-all ${statusFilter === tipo.nome ? 'ring-4 ring-offset-0 scale-110' : 'group-hover:scale-110'}`}
-               style={{ backgroundColor: tipo.cor, boxShadow: statusFilter === tipo.nome ? `0 0 0 4px ${tipo.cor}33` : undefined }}
-             ></div>
-             <span className={`text-[13px] font-bold ${statusFilter === tipo.nome ? 'text-slate-900' : 'text-slate-500'}`}>{tipo.nome}</span>
-           </div>
-         ))}
-         <div className="flex items-center gap-2 cursor-pointer group" onClick={() => setStatusFilter(TODAS)}>
-           <div className={`w-3.5 h-3.5 rounded-full bg-slate-800 flex-shrink-0 transition-all ${statusFilter === TODAS ? 'ring-4 ring-slate-200 scale-110' : 'group-hover:scale-110'}`}></div>
-           <span className={`text-[13px] font-bold ${statusFilter === TODAS ? 'text-slate-900' : 'text-slate-500'}`}>Todas</span>
-         </div>
+      <div className="text-xs text-slate-500 space-y-1.5 leading-relaxed">
+        <p className="flex items-start gap-1.5"><MapPin size={13} className="flex-shrink-0 mt-0.5" /> {store.endereco}, {store.bairro} — {store.cidade}/{store.estado}, {store.cep}</p>
+        {store.proprietario && <p className="flex items-center gap-1.5"><User size={13} className="flex-shrink-0" /> {store.proprietario}</p>}
+        {store.contatos && store.contatos.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {store.contatos.map((c, i) => (
+              <p key={c.id || i} className="flex items-center gap-1.5"><Phone size={13} className="flex-shrink-0" /> {c.nome}: {c.telefone}</p>
+            ))}
+          </div>
+        )}
+        {store.informacoes && <p className="italic pt-0.5">{store.informacoes}</p>}
       </div>
 
-      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Categoria</p>
-      <div className="flex flex-wrap gap-2 pb-2">
-        {CATEGORIAS.map(cat => {
-          const active = categoriaFilter.includes(cat.value);
-          return (
-            <button
-              key={cat.value}
-              onClick={() => toggleCategoria(cat.value)}
-              className={`px-3 py-1.5 rounded-full text-[12px] font-bold border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'}`}
-            >
-              {cat.label}
-            </button>
-          );
-        })}
+      <div className="flex flex-col gap-2 mt-auto pt-1">
+        <button
+          onClick={onUseDestination}
+          className="w-full px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded shadow-sm transition"
+        >
+          Usar como Destino
+        </button>
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&destination=${store.lat},${store.lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded border border-slate-200 transition"
+        >
+          <Navigation size={12} /> Abrir no Google Maps
+        </a>
       </div>
     </div>
   );
+}
 
-
+function FilterModal({ statusTipos, statusFilter, categoriaFilter, onSetStatus, onToggleCategoria, onClear, onClose }: {
+  statusTipos: StatusTipo[];
+  statusFilter: string;
+  categoriaFilter: Categoria[];
+  onSetStatus: (s: string) => void;
+  onToggleCategoria: (c: Categoria) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
   return (
-    <div className="relative w-full h-[100dvh] overflow-hidden bg-slate-50 font-sans" style={{ backgroundImage: 'radial-gradient(#d1d5db 1px, transparent 1px)', backgroundSize: '40px 40px' }}>
+    <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-black text-slate-800">Filtros</h2>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
 
-      {/* Card flutuante desktop */}
-      <div className="hidden md:flex absolute top-4 left-4 w-[420px] z-[100] pointer-events-none flex-col gap-0 max-h-[calc(100vh-32px)]">
-        <div className="bg-white rounded-xl shadow-2xl shadow-blue-900/10 border border-slate-200 pointer-events-auto flex flex-col w-full h-[calc(100vh-32px)] overflow-hidden">
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Status</p>
+        <div className="flex flex-wrap gap-2 mb-5">
+          <button
+            onClick={() => onSetStatus(TODAS)}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${statusFilter === TODAS ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'}`}
+          >
+            Todos
+          </button>
+          {statusTipos.map(tipo => (
+            <button
+              key={tipo.id}
+              onClick={() => onSetStatus(tipo.nome)}
+              className="px-3 py-1.5 rounded-full text-xs font-bold border transition-colors"
+              style={statusFilter === tipo.nome
+                ? { backgroundColor: tipo.cor, borderColor: tipo.cor, color: '#fff' }
+                : { backgroundColor: '#fff', borderColor: '#cbd5e1', color: '#475569' }}
+            >
+              {tipo.nome}
+            </button>
+          ))}
+        </div>
 
-          <div className="flex items-center px-5 py-4 gap-3 border-b border-gray-100 flex-shrink-0 z-50 bg-white">
-              <h1 className="text-[20px] font-black text-[#1e3a8a] tracking-tight">Mapa de Concessionárias</h1>
-          </div>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Categoria</p>
+        <div className="flex flex-wrap gap-2 mb-6">
+          {CATEGORIAS.map(cat => {
+            const active = categoriaFilter.includes(cat.value);
+            return (
+              <button
+                key={cat.value}
+                onClick={() => onToggleCategoria(cat.value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:border-blue-400'}`}
+              >
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
 
-          <div className="p-5 flex-shrink-0 z-50 bg-white relative">
-             <p className="text-[12px] font-bold text-blue-600 uppercase tracking-wide mb-2">BUSCAR ENDEREÇO / CLIENTE</p>
-             <AddressSearch
-                ref={searchRefDesktop}
-                className="w-full"
-                onSelectAddress={(loc) => {
-                  setSearchedLocation(loc);
-                }}
-             />
-          </div>
-
-          <div className="bg-white px-5 pb-5 overflow-y-auto flex-1">
-            {renderRoutingAndFilters()}
-          </div>
+        <div className="flex gap-3">
+          <button onClick={onClear} className="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 font-bold text-slate-700 hover:bg-slate-50 transition-colors text-sm">
+            Limpar filtros
+          </button>
+          <button onClick={onClose} className="flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 font-bold text-white transition-colors text-sm">
+            Aplicar
+          </button>
         </div>
       </div>
-
-      {/* Barra superior mobile */}
-      <div className="md:hidden absolute top-0 left-0 w-full z-[1000] pointer-events-auto bg-white/95 backdrop-blur-md pb-4 pt-3 px-4 shadow-sm border-b border-slate-200">
-        <div className="flex items-center justify-center gap-3 mb-3">
-            <h1 className="text-[#1e3a8a] text-[15px] font-black tracking-tight">Mapa de Concessionárias</h1>
-        </div>
-        <AddressSearch
-          ref={searchRefMobile}
-          className="w-full"
-          onSelectAddress={(loc) => { setSearchedLocation(loc); }}
-        />
-      </div>
-
-      {/* Drawer mobile */}
-      <div className="md:hidden absolute bottom-0 left-0 w-full z-[100] pointer-events-none overflow-hidden h-[100dvh]">
-        <motion.div
-          className="absolute bottom-0 left-0 w-full bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.12)] border-t border-slate-200 pointer-events-auto flex flex-col"
-          drag="y"
-          dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={0.2}
-          onDragEnd={(e, { offset, velocity }) => {
-            if (offset.y > 60 || velocity.y > 200) setIsDrawerExpanded(false);
-            else if (offset.y < -60 || velocity.y < -200) setIsDrawerExpanded(true);
-          }}
-          animate={{ y: isDrawerExpanded ? 0 : 'calc(100% - 70px)' }}
-          transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          style={{ height: 'auto', maxHeight: '85vh' }}
-        >
-          <div
-             className="w-full pt-3 pb-4 hover:cursor-grab active:cursor-grabbing flex-shrink-0 flex flex-col items-center justify-center bg-white rounded-t-3xl"
-             onClick={() => setIsDrawerExpanded(!isDrawerExpanded)}
-          >
-            <div className="w-12 h-1.5 bg-slate-200 rounded-full"></div>
-            {!isDrawerExpanded && <span className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Ver Rota e Filtros</span>}
-          </div>
-
-          <div
-             className="overflow-y-auto px-5 pb-8 hide-scrollbar flex flex-col flex-1 bg-white"
-             onPointerDown={(e) => {
-                e.stopPropagation();
-             }}
-          >
-            {renderRoutingAndFilters()}
-          </div>
-        </motion.div>
-      </div>
-
-      <MapClient
-        stores={filteredStores}
-        statusTipos={statusTipos}
-        origin={origin}
-        destination={destination}
-        searchedLocation={searchedLocation}
-        onSetOriginFromPin={(s) => {
-          setOrigin({ lat: s.lat, lng: s.lng, address: `Concessionária: ${s.nome_loja}` });
-          setRouteInfo({ distance: '', time: '' });
-          setSearchedLocation(null);
-        }}
-        onSetDestination={(s) => {
-          setDestination(s);
-          setRouteInfo({ distance: '', time: '' });
-          setSearchedLocation(null);
-        }}
-        onSetOriginFromSearch={() => {
-           if(searchedLocation) setOrigin(searchedLocation);
-           setRouteInfo({ distance: '', time: '' });
-        }}
-        onSetDestinationFromSearch={() => {
-           if(searchedLocation) setDestination({ lat: searchedLocation.lat, lng: searchedLocation.lng, nome_loja: searchedLocation.address } as Concessionaria);
-           setRouteInfo({ distance: '', time: '' });
-        }}
-        onRouteFound={handleRouteFound}
-        onClearEvent={handleClearRouting}
-      />
     </div>
   );
 }
