@@ -26,6 +26,7 @@ interface MapAppProps {
 }
 
 const TODAS = '__TODAS__';
+const LOGO_URL = 'https://aigdnfibsmwypcgnlyra.supabase.co/storage/v1/object/public/imagens/logo%20all%20blue.png';
 
 function statusColor(nome: string, statusTipos: StatusTipo[]) {
   return statusTipos.find(t => t.nome === nome)?.cor || '#64748B';
@@ -150,16 +151,20 @@ export default function MapApp({ initialConcessionarias, statusTipos: initialSta
   };
 
   return (
-    <div className="relative w-full h-[100dvh] overflow-hidden bg-slate-50 font-sans flex flex-col">
+    <div className="relative w-full min-h-screen bg-slate-50 font-sans flex flex-col items-stretch">
 
       {/* Barra superior */}
       <header className="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm z-[200]">
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 md:px-5">
-          <h1 className="text-[15px] md:text-[18px] font-black text-[#1e3a8a] tracking-tight whitespace-nowrap mr-1">
+        <div className="max-w-2xl mx-auto flex flex-col items-center gap-3 px-4 py-6 text-center">
+          <img src={LOGO_URL} alt="Gênesis" className="h-9 md:h-11 w-auto object-contain" />
+          <h1 className="text-2xl md:text-3xl font-black text-[#1e3a8a] tracking-tight">
             Mapa de Agências
           </h1>
+          <p className="text-[13px] md:text-sm text-slate-500 -mt-2">
+            Encontre abaixo a agência parceira mais próxima de você
+          </p>
 
-          <div className="flex-1 min-w-[180px]">
+          <div className="w-full max-w-md">
             <AddressSearch
               ref={searchRef}
               className="w-full"
@@ -171,7 +176,13 @@ export default function MapApp({ initialConcessionarias, statusTipos: initialSta
             />
           </div>
 
-          <div className="flex items-center gap-2 ml-auto">
+          {/* Instrução de uso */}
+          <div className="w-full max-w-md flex items-start gap-2 text-[12px] text-blue-700 bg-blue-50 rounded-lg px-3 py-2 text-left">
+            <Info size={14} className="flex-shrink-0 mt-0.5" />
+            <p><strong>Escolha a agência mais próxima do seu endereço.</strong> Antes, filtre o tipo de veículo em "Filtros".</p>
+          </div>
+
+          <div className="flex items-center gap-2">
             <div className="flex bg-slate-100 rounded-lg p-1">
               <button
                 onClick={() => setView('mapa')}
@@ -207,89 +218,81 @@ export default function MapApp({ initialConcessionarias, statusTipos: initialSta
               <Lock size={16} />
             </Link>
           </div>
-        </div>
 
-        {/* Instrução de uso */}
-        <div className="flex items-start gap-2 px-3 md:px-5 pb-2.5 text-[12px] text-blue-700 bg-blue-50/60">
-          <Info size={14} className="flex-shrink-0 mt-0.5" />
-          <p><strong>Escolha a agência mais próxima do seu endereço.</strong> Antes, filtre o tipo de veículo em "Filtros".</p>
+          {/* Barra de rota ativa */}
+          {(origin || destination) && (
+            <div className="w-full flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 bg-slate-800 text-white text-[12px] rounded-lg text-left">
+              <span className="truncate max-w-[45%]"><strong className="text-emerald-400">Origem:</strong> {origin ? origin.address : 'aguardando...'}</span>
+              <span className="truncate max-w-[45%]"><strong className="text-amber-400">Destino:</strong> {destination ? destination.nome_loja : 'aguardando...'}</span>
+              {routeInfo.distance && (
+                <span className="font-bold">{routeInfo.distance} • {routeInfo.time}</span>
+              )}
+              <button onClick={handleClearOrigin} className="ml-auto text-slate-300 hover:text-white underline text-[11px] font-bold">
+                Limpar rota
+              </button>
+            </div>
+          )}
         </div>
-
-        {/* Barra de rota ativa */}
-        {(origin || destination) && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 md:px-5 py-2 bg-slate-800 text-white text-[12px]">
-            <span className="truncate max-w-[45%]"><strong className="text-emerald-400">Origem:</strong> {origin ? origin.address : 'aguardando...'}</span>
-            <span className="truncate max-w-[45%]"><strong className="text-amber-400">Destino:</strong> {destination ? destination.nome_loja : 'aguardando...'}</span>
-            {routeInfo.distance && (
-              <span className="font-bold">{routeInfo.distance} • {routeInfo.time}</span>
-            )}
-            <button onClick={handleClearOrigin} className="ml-auto text-slate-300 hover:text-white underline text-[11px] font-bold">
-              Limpar rota
-            </button>
-          </div>
-        )}
       </header>
 
       {/* Conteúdo principal */}
-      <div className="relative flex-1 min-h-0">
-        {view === 'mapa' ? (
-          <>
-            <MapClient
-              stores={filteredStores}
-              statusTipos={statusTipos}
-              origin={origin}
-              destination={destination}
-              focusStoreId={focusStoreId}
-              onSetDestination={handleUseDestination}
-              onClearOrigin={handleClearOrigin}
-              onRouteFound={handleRouteFound}
-            />
+      {view === 'mapa' ? (
+        <div className="relative w-full h-[70vh] min-h-[480px] md:h-[75vh]">
+          <MapClient
+            stores={filteredStores}
+            statusTipos={statusTipos}
+            origin={origin}
+            destination={destination}
+            focusStoreId={focusStoreId}
+            onSetDestination={handleUseDestination}
+            onClearOrigin={handleClearOrigin}
+            onRouteFound={handleRouteFound}
+          />
 
-            {nearestThree.length > 0 && (
-              <div className="absolute top-3 left-3 z-[100] w-[280px] max-w-[calc(100%-24px)] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
-                <div className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-50 border-b border-blue-100">
-                  <Zap size={14} className="text-blue-600" />
-                  <h2 className="text-[12px] font-black text-slate-800 uppercase tracking-tight">3 mais próximas de você</h2>
-                </div>
-                <div className="flex flex-col divide-y divide-slate-100 max-h-[50vh] overflow-y-auto">
-                  {nearestThree.map(store => (
-                    <div key={store.id} className="p-3 flex items-center justify-between gap-2">
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[13px] font-bold text-slate-800 truncate">{store.nome_loja}</span>
-                        <span className="text-[11px] font-bold text-emerald-600">{store.distancia_km?.toFixed(1)} km</span>
-                      </div>
-                      <button
-                        onClick={() => handleUseDestination(store)}
-                        className="flex-shrink-0 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded transition"
-                      >
-                        Destino
-                      </button>
+          {nearestThree.length > 0 && (
+            <div className="absolute top-3 left-3 z-[100] w-[280px] max-w-[calc(100%-24px)] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
+              <div className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-50 border-b border-blue-100">
+                <Zap size={14} className="text-blue-600" />
+                <h2 className="text-[12px] font-black text-slate-800 uppercase tracking-tight">3 mais próximas de você</h2>
+              </div>
+              <div className="flex flex-col divide-y divide-slate-100 max-h-[50vh] overflow-y-auto">
+                {nearestThree.map(store => (
+                  <div key={store.id} className="p-3 flex items-center justify-between gap-2">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[13px] font-bold text-slate-800 truncate">{store.nome_loja}</span>
+                      <span className="text-[11px] font-bold text-emerald-600">{store.distancia_km?.toFixed(1)} km</span>
                     </div>
-                  ))}
-                </div>
+                    <button
+                      onClick={() => handleUseDestination(store)}
+                      className="flex-shrink-0 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded transition"
+                    >
+                      Destino
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="w-full p-3 md:p-6">
+          <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sortedStores.map(store => (
+              <StoreCard
+                key={store.id}
+                store={store}
+                color={statusColor(store.status, statusTipos)}
+                onUseDestination={() => handleUseDestination(store)}
+              />
+            ))}
+            {sortedStores.length === 0 && (
+              <div className="col-span-full text-center py-16 text-slate-400 font-medium">
+                Nenhuma agência encontrada com os filtros atuais.
               </div>
             )}
-          </>
-        ) : (
-          <div className="absolute inset-0 overflow-y-auto bg-slate-50 p-3 md:p-6">
-            <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sortedStores.map(store => (
-                <StoreCard
-                  key={store.id}
-                  store={store}
-                  color={statusColor(store.status, statusTipos)}
-                  onUseDestination={() => handleUseDestination(store)}
-                />
-              ))}
-              {sortedStores.length === 0 && (
-                <div className="col-span-full text-center py-16 text-slate-400 font-medium">
-                  Nenhuma agência encontrada com os filtros atuais.
-                </div>
-              )}
-            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {isFilterOpen && (
         <FilterModal

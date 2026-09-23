@@ -140,6 +140,7 @@ export default function MapClient({ stores, statusTipos, origin, destination, fo
         mapStyle={MAP_STYLE}
         mapboxAccessToken={MAPBOX_TOKEN}
         attributionControl={false}
+        cooperativeGestures={true}
       >
         <div style={{ position: 'absolute', right: 16, bottom: 24, zIndex: 50 }}>
           <NavigationControl position="bottom-right" showCompass={true} showZoom={false} />
